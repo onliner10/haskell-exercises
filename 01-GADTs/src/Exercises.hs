@@ -17,6 +17,8 @@ instance Countable Bool where count x = if x then 1 else 0
 -- things.
 
 data CountableList where
+  CNil :: CountableList
+  CCons :: Countable a => a -> CountableList -> CountableList
   -- ...
 
 
@@ -24,13 +26,16 @@ data CountableList where
 -- once they have been 'count'ed.
 
 countList :: CountableList -> Int
-countList = error "Implement me!"
+countList CNil = 0
+countList (CCons head tail) = (count head) + countList(tail)
 
 
 -- | c. Write a function that removes all elements whose count is 0.
 
 dropZero :: CountableList -> CountableList
-dropZero = error "Implement me!"
+dropZero CNil = CNil
+dropZero (CCons head tail) | (count head) == 0 = dropZero tail
+dropZero (CCons head tail) = CCons head (dropZero tail)
 
 
 -- | d. Can we write a function that removes all the things in the list of type
@@ -38,8 +43,7 @@ dropZero = error "Implement me!"
 
 filterInts :: CountableList -> CountableList
 filterInts = error "Contemplate me!"
-
-
+-- no, because there is no type information
 
 
 
@@ -48,25 +52,34 @@ filterInts = error "Contemplate me!"
 -- | a. Write a list that can take /any/ type, without any constraints.
 
 data AnyList where
-  -- ...
+  ANil :: AnyList
+  ACons :: a -> AnyList -> AnyList
 
 -- | b. How many of the following functions can we implement for an 'AnyList'?
 
 reverseAnyList :: AnyList -> AnyList
-reverseAnyList = undefined
+reverseAnyList xs = go xs id
+  where
+    go  ANil        f = f ANil
+    go (ACons x xs) f = go xs (ACons x . f)
 
 filterAnyList :: (a -> Bool) -> AnyList -> AnyList
 filterAnyList = undefined
+-- we can't since the list is not homogenus and we have no type information
 
 lengthAnyList :: AnyList -> Int
-lengthAnyList = undefined
+lengthAnyList ANil = 0
+lengthAnyList (ACons _ xs)  = 1 + lengthAnyList xs
 
 foldAnyList :: Monoid m => AnyList -> m
 foldAnyList = undefined
+-- we can't since the list is not homogenus 
 
 isEmptyAnyList :: AnyList -> Bool
-isEmptyAnyList = undefined
+isEmptyAnyList ANil = True
+isEmptyAnyList _ = False
 
+-- we can't we can't ensure the types have an Show instance
 instance Show AnyList where
   show = error "What about me?"
 
@@ -94,12 +107,19 @@ transformable2 = TransformWith (uncurry (++)) ("Hello,", " world!")
 
 -- | a. Which type variable is existential inside 'TransformableTo'? What is
 -- the only thing we can do to it?
+-- input, we can only transform to string
 
 -- | b. Could we write an 'Eq' instance for 'TransformableTo'? What would we be
 -- able to check?
 
+instance Eq a => Eq (TransformableTo a) where
+  (==) (TransformWith f x) (TransformWith g y) = (f x) == (g y)
+
 -- | c. Could we write a 'Functor' instance for 'TransformableTo'? If so, write
 -- it. If not, why not?
+
+instance Functor TransformableTo where
+  fmap g (TransformWith f x) = TransformWith (g . f) x
 
 
 
@@ -115,13 +135,17 @@ data EqPair where
 -- | a. There's one (maybe two) useful function to write for 'EqPair'; what is
 -- it?
 
+areEqual :: EqPair -> Bool
+areEqual (EqPair a b) = a == b
+
 -- | b. How could we change the type so that @a@ is not existential? (Don't
 -- overthink it!)
 
+data EqPair' a where
+  EqPair' :: Eq a => a -> a -> EqPair' a
+
 -- | c. If we made the change that was suggested in (b), would we still need a
 -- GADT? Or could we now represent our type as an ADT?
-
-
 
 
 
@@ -148,17 +172,28 @@ getInt (IntBox int _) = int
 -- pattern-match:
 
 getInt' :: MysteryBox String -> Int
-getInt' _doSomeCleverPatternMatching = error "Return that value"
+-- getInt' _doSomeCleverPatternMatching = error "Return that value"
+getInt' (StringBox _ x) = getInt x
 
 -- | b. Write the following function. Again, don't overthink it!
 
 countLayers :: MysteryBox a -> Int
-countLayers = error "Implement me"
+countLayers EmptyBox = 0
+countLayers (IntBox _ x) = 1 + countLayers x
+countLayers (StringBox _ x) = 1 + countLayers x
+countLayers (BoolBox _ x) = 1 + countLayers x
+
+-- countLayers = error "Implement me"
 
 -- | c. Try to implement a function that removes one layer of "Box". For
 -- example, this should turn a BoolBox into a StringBox, and so on. What gets
 -- in our way? What would its type be?
 
+-- unwrapBox :: MysteryBox a -> MysteryBox b
+-- unwrapBox EmptyBox = EmptyBox
+-- unwrapBox (IntBox _ x) = x
+-- unwrapBox (StringBox _ x) = x
+-- unwrapBox (BoolBox _ x) = x
 
 
 
@@ -180,15 +215,19 @@ exampleHList = HCons "Tom" (HCons 25 (HCons True HNil))
 -- need to pattern-match on HNil, and therefore the return type shouldn't be
 -- wrapped in a 'Maybe'!
 
+hHead :: HList (a, b) -> a
+hHead (HCons x _) = x
+
+foo = hHead exampleHList
+
 -- | b. Currently, the tuples are nested. Can you pattern-match on something of
 -- type @HList (Int, String, Bool, ())@? Which constructor would work?
 
-patternMatchMe :: HList (Int, String, Bool, ()) -> Int
-patternMatchMe = undefined
+-- patternMatchMe :: HList (Int, String, Bool, ()) -> Int
+-- patternMatchMe (HCons (x, (_, (_, ())))) = x
 
 -- | c. Can you write a function that appends one 'HList' to the end of
 -- another? What problems do you run into?
-
 
 
 
@@ -204,11 +243,25 @@ data Branch left centre right
 -- /tree/. None of the variables should be existential.
 
 data HTree a where
-  -- ...
+  HEmpty
+    :: HTree Empty
+
+  HBranch
+    :: HTree left -> centre -> HTree right
+    -> HTree (Branch left centre right)
 
 -- | b. Implement a function that deletes the left subtree. The type should be
 -- strong enough that GHC will do most of the work for you. Once you have it,
 -- try breaking the implementation - does it type-check? If not, why not?
+deleteLeftTree :: HTree (Branch l c r) -> HTree (Branch Empty c r)
+deleteLeftTree (HBranch _ c r) = HBranch HEmpty c r
+
+deleteLeft
+  :: HTree (Branch left centre right)
+  -> HTree (Branch Empty centre right)
+
+deleteLeft (HBranch _ centre right)
+  = HBranch HEmpty centre right
 
 -- | c. Implement 'Eq' for 'HTree's. Note that you might have to write more
 -- than one to cover all possible HTrees. You might also need an extension or
